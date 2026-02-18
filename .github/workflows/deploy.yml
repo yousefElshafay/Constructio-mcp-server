@@ -1,0 +1,298 @@
+# GitHub Actions CI/CD Pipeline
+# Triggers on push to main/master branch
+# Flow: Test → Build → Deploy to Cloud Run → Update API Gateway (if changed)
+
+name: Deploy to GCP
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:  # Allow manual trigger from GitHub UI
+
+env:
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GCP_REGION: us-central1
+  SERVICE_NAME: constructio-mcp-server
+  API_GATEWAY_ID: constructio-api
+  API_GATEWAY_NAME: constructio-gateway
+
+jobs:
+  # Job 1: Run tests
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install dependencies
+        run: uv pip install --system -e ".[dev]"
+
+      - name: Run tests with coverage
+        run: |
+          pytest tests/ -v \
+            --cov=src/mcp_server \
+            --cov-report=term \
+            --cov-report=xml
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+
+      - name: Upload coverage reports
+        if: github.event_name == 'push'
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+
+  # Job 2: Build and push Docker image
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push'
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+      short_sha: ${{ steps.meta.outputs.short_sha }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker
+
+      - name: Extract metadata
+        id: meta
+        run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          IMAGE_TAG="gcr.io/${{ env.GCP_PROJECT_ID }}/${{ env.SERVICE_NAME }}:${SHORT_SHA}"
+          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "Building image: ${IMAGE_TAG}"
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t gcr.io/${{ env.GCP_PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ steps.meta.outputs.short_sha }} \
+            -t gcr.io/${{ env.GCP_PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest \
+            --cache-from gcr.io/${{ env.GCP_PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest \
+            .
+
+      - name: Push Docker images
+        run: |
+          docker push gcr.io/${{ env.GCP_PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ steps.meta.outputs.short_sha }}
+          docker push gcr.io/${{ env.GCP_PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest
+
+  # Job 3: Deploy to Cloud Run
+  deploy:
+    name: Deploy to Cloud Run
+    runs-on: ubuntu-latest
+    needs: build
+    outputs:
+      service_url: ${{ steps.deploy.outputs.url }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        run: |
+          echo "🚀 Deploying to Cloud Run..."
+          
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --image gcr.io/${{ env.GCP_PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ needs.build.outputs.short_sha }} \
+            --region ${{ env.GCP_REGION }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --set-env-vars "GCS_BUCKET=${{ secrets.GCS_BUCKET }},FIRESTORE_COLLECTION=${{ secrets.FIRESTORE_COLLECTION }},GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }}" \
+            --memory 512Mi \
+            --cpu 1 \
+            --timeout 300 \
+            --max-instances 10 \
+            --min-instances 0 \
+            --tag production \
+            --quiet
+          
+          # Get service URL
+          SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+            --region ${{ env.GCP_REGION }} \
+            --format 'value(status.url)')
+          
+          echo "url=${SERVICE_URL}" >> $GITHUB_OUTPUT
+          echo "✅ Deployed to: ${SERVICE_URL}"
+
+      - name: Wait for service to be ready
+        run: sleep 10
+
+      - name: Health check
+        run: |
+          echo "🏥 Running health check on ${{ steps.deploy.outputs.url }}/health"
+          
+          for i in {1..10}; do
+            if curl -f "${{ steps.deploy.outputs.url }}/health" -o /dev/null -s -w "Status: %{http_code}\n"; then
+              echo "✅ Health check passed!"
+              exit 0
+            fi
+            echo "⏳ Attempt $i/10 failed, retrying in 5s..."
+            sleep 5
+          done
+          
+          echo "❌ Health check failed after 10 attempts"
+          exit 1
+
+  # Job 4: Update API Gateway (only if config changed)
+  update-gateway:
+    name: Update API Gateway
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: github.event_name == 'push'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # Need previous commit to detect changes
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Check if API Gateway config changed
+        id: check
+        run: |
+          if git diff --name-only HEAD~1 HEAD | grep -q "api-gateway-config.yaml"; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "⚠️  API Gateway config changed - will update"
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "✅ API Gateway config unchanged - skipping update"
+          fi
+
+      - name: Update API Gateway configuration
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          SERVICE_URL="${{ needs.deploy.outputs.service_url }}"
+          
+          echo "🔧 Updating API Gateway with service URL: ${SERVICE_URL}"
+          
+          # Replace placeholders in config
+          sed -i "s|https://constructio-mcp-server-XXXXXX.a.run.app|${SERVICE_URL}|g" api-gateway-config.yaml
+          sed -i "s|YOUR_PROJECT_ID|${{ env.GCP_PROJECT_ID }}|g" api-gateway-config.yaml
+          
+          # Create new API config
+          CONFIG_NAME="${{ env.API_GATEWAY_ID }}-config-${SHORT_SHA}"
+          
+          echo "Creating API config: ${CONFIG_NAME}"
+          gcloud api-gateway api-configs create ${CONFIG_NAME} \
+            --api=${{ env.API_GATEWAY_ID }} \
+            --openapi-spec=api-gateway-config.yaml \
+            --project=${{ env.GCP_PROJECT_ID }} \
+            --display-name="Auto-deployed from commit ${SHORT_SHA}" \
+            --quiet || echo "⚠️  Config may already exist, continuing..."
+          
+          # Update gateway to use new config
+          echo "Updating API Gateway: ${{ env.API_GATEWAY_NAME }}"
+          gcloud api-gateway gateways update ${{ env.API_GATEWAY_NAME }} \
+            --api=${{ env.API_GATEWAY_ID }} \
+            --api-config=${CONFIG_NAME} \
+            --location=${{ env.GCP_REGION }} \
+            --project=${{ env.GCP_PROJECT_ID }} \
+            --quiet
+          
+          echo "✅ API Gateway updated to config: ${CONFIG_NAME}"
+
+      - name: Get API Gateway URL
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          GATEWAY_URL=$(gcloud api-gateway gateways describe ${{ env.API_GATEWAY_NAME }} \
+            --location=${{ env.GCP_REGION }} \
+            --project=${{ env.GCP_PROJECT_ID }} \
+            --format='value(defaultHostname)' 2>/dev/null || echo "N/A")
+          
+          if [ "$GATEWAY_URL" != "N/A" ]; then
+            echo "🌐 API Gateway URL: https://${GATEWAY_URL}"
+          fi
+
+  # Job 5: Deployment summary
+  summary:
+    name: Deployment Summary
+    runs-on: ubuntu-latest
+    needs: [test, build, deploy, update-gateway]
+    if: always() && github.event_name == 'push'
+    
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.test.result }}" == "success" ]; then
+            echo "✅ Tests passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Tests failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.build.result }}" == "success" ]; then
+            echo "✅ Docker image built: \`${{ needs.build.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Docker build failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.deploy.result }}" == "success" ]; then
+            echo "✅ Deployed to Cloud Run" >> $GITHUB_STEP_SUMMARY
+            echo "   - URL: ${{ needs.deploy.outputs.service_url }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Cloud Run deployment failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.update-gateway.result }}" == "success" ]; then
+            echo "✅ API Gateway checked/updated" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.update-gateway.result }}" == "skipped" ]; then
+            echo "⏭️  API Gateway update skipped" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️  API Gateway update had issues" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Check overall status
+        if: needs.deploy.result != 'success'
+        run: |
+          echo "❌ Deployment failed!"
+          exit 1

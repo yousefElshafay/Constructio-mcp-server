@@ -1,0 +1,330 @@
+openapi: 3.0.3
+info:
+  title: Generators Service API
+  version: 1.0.0
+  description: |
+    Registry API for code generators. Stores generator metadata in Firestore and returns a signed
+    Google Cloud Storage upload URL when creating a generator. Upload status is updated asynchronously
+    by a separate function triggered by the bucket upload event.
+servers:
+  - url: https://api.example.com
+    description: Production
+  - url: http://localhost:8080
+    description: Local
+
+tags:
+  - name: Generators
+
+paths:
+  /v1/generators:
+    get:
+      tags: [Generators]
+      summary: List generators
+      operationId: controllers.generator_controller.list_generators
+      parameters:
+        - name: language
+          in: query
+          description: Filter by language.
+          schema: { $ref: "#/components/schemas/Language" }
+        - name: version
+          in: query
+          description: Filter by version.
+          schema: { type: string, maxLength: 32 }
+        - name: stack
+          in: query
+          description: Filter by stack (framework/platform).
+          schema: { type: string, maxLength: 64 }
+        - name: tag
+          in: query
+          description: Filter by tag (repeatable).
+          style: form
+          explode: true
+          schema:
+            type: array
+            items: { type: string, maxLength: 32 }
+      responses:
+        "200":
+          description: A list of generators.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GeneratorListResponse" }
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+    post:
+      tags: [Generators]
+      summary: Create generator (returns signed upload URL)
+      description: |
+        Creates a generator metadata record and returns a signed GCS upload URL for the artifact.
+        The client uploads the artifact directly to GCS. A separate upload-triggered function updates
+        the generator's upload_status to UPLOADED/READY/FAILED.
+      operationId: controllers.generator_controller.create_generator
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GeneratorCreateRequest" }
+      responses:
+        "201":
+          description: Generator created with upload instructions.
+          headers:
+            Location:
+              description: URL of the created resource.
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GeneratorCreateResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /v1/generators/{generatorId}:
+    get:
+      tags: [Generators]
+      summary: Get generator
+      operationId: controllers.generator_controller.get_generator
+      parameters:
+        - $ref: "#/components/parameters/generatorId"
+      responses:
+        "200":
+          description: Generator found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Generator" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+    delete:
+      tags: [Generators]
+      summary: Delete generator
+      operationId: controllers.generator_controller.delete_generator
+      parameters:
+        - $ref: "#/components/parameters/generatorId"
+      responses:
+        "204":
+          description: Deleted.
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+components:
+  parameters:
+    generatorId:
+      name: generatorId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 64
+        description: Generator ID (uuid or ulid recommended).
+
+  responses:
+    BadRequest:
+      description: Bad request.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+    Conflict:
+      description: Conflict (e.g., name already exists).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+    ServerError:
+      description: Server error.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Language:
+      type: string
+      enum: [python, typescript, javascript, php, csharp, java, go, rust, other]
+
+    UploadStatus:
+      type: string
+      enum: [pending, uploaded, ready, failed]
+      description: |
+        pending: signed URL issued; awaiting upload
+        uploaded: object uploaded (set by async function)
+        ready: validated and usable (optional)
+        failed: upload/validation failed
+
+    Generator:
+      type: object
+      required:
+        - id
+        - name
+        - language
+        - upload_status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          minLength: 8
+          maxLength: 64
+          example: "gen_01HTZ7Y4M7Z7W2B8Q6P2"
+        name:
+          type: string
+          minLength: 3
+          maxLength: 80
+          example: "laravel-crud-module"
+        description:
+          type: string
+          maxLength: 2000
+        language:
+          $ref: "#/components/schemas/Language"
+        stack:
+          type: string
+          maxLength: 64
+          description: Framework/platform (e.g. laravel, fastapi, nestjs).
+          example: "laravel"
+        version:
+          type: string
+          maxLength: 32
+        tags:
+          type: array
+          maxItems: 30
+          items:
+            type: string
+            maxLength: 32
+        upload_status:
+          $ref: "#/components/schemas/UploadStatus"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        download_url:
+          type: string
+          format: uri
+        download_expires_at:
+          type: string
+          format: date-time
+
+    ArtifactRef:
+      type: object
+      nullable: true
+      description: Reference to the expected artifact location in GCS.
+      properties:
+        bucket:
+          type: string
+          maxLength: 120
+        object:
+          type: string
+          maxLength: 1024
+          description: Object path/key in storage (where client should upload).
+        content_type:
+          type: string
+          maxLength: 100
+          example: "application/zip"
+        size_bytes:
+          type: integer
+          minimum: 0
+        sha256:
+          type: string
+          maxLength: 64
+          description: Hex-encoded SHA-256 (optional).
+
+    UploadInstruction:
+      type: object
+      required: [upload_url, expires_at, method, headers]
+      properties:
+        upload_url:
+          type: string
+          format: uri
+        expires_at:
+          type: string
+          format: date-time
+        method:
+          type: string
+          enum: [PUT, POST]
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+          description: Headers the client must include in upload request.
+
+    GeneratorCreateRequest:
+      type: object
+      required: [name, language, upload]
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 80
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          description: Kebab-case unique name.
+        description:
+          type: string
+          maxLength: 2000
+        language:
+          $ref: "#/components/schemas/Language"
+        stack:
+          type: string
+          maxLength: 64
+        version:
+          type: string
+          maxLength: 32
+        tags:
+          type: array
+          maxItems: 30
+          items: { type: string, maxLength: 32 }
+        upload:
+          $ref: "#/components/schemas/UploadRequest"
+
+    UploadRequest:
+      type: object
+      required: [content_type]
+      properties:
+        content_type:
+          type: string
+          maxLength: 100
+          example: "application/zip"
+
+    GeneratorCreateResponse:
+      type: object
+      required: [generator, upload]
+      properties:
+        generator:
+          $ref: "#/components/schemas/Generator"
+        upload:
+          $ref: "#/components/schemas/UploadInstruction"
+
+    GeneratorListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Generator" }
+
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          example: "bad_request"
+        message:
+          type: string
+          example: "Validation failed"
+        details:
+          type: object
+          additionalProperties: true
