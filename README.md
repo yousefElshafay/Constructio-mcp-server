@@ -6,6 +6,44 @@ Single Cloud Run service that exposes:
 
 API Gateway sits in front for auth/rate limiting. Firestore stores metadata and GCS stores artifacts.
 
+```mermaid
+flowchart LR
+  %% Clients
+  client[Clients / Agents] -->|JWT| apigw[API Gateway<br/>Firebase Auth JWT]
+
+  %% CI/CD
+  subgraph ci["CI/CD (GitHub)"]
+    gh[GitHub Repo]
+    gha[GitHub Actions]
+    cb[Cloud Build]
+  end
+  gh --> gha
+  gh --> cb
+
+  %% Deploy to GCP
+  gha --> cr[Cloud Run Service]
+  cb --> cr
+
+  %% Cloud Run app
+  subgraph app["Cloud Run: Constructio API + MCP"]
+    rest[REST API<br/>/v1/...]
+    mcp[MCP HTTP<br/>/mcp]
+    svc[GeneratorService]
+    rest --> svc
+    mcp --> svc
+  end
+
+  apigw --> cr
+  cr --> rest
+  cr --> mcp
+
+  %% Data stores
+  fs[Firestore<br/>metadata]
+  gcs[GCS<br/>artifacts]
+  svc --> fs
+  svc --> gcs
+```
+
 ## Endpoints
 
 REST:
