@@ -1,338 +1,134 @@
-# API Gateway Configuration for Constructio Generators API
-# This config wraps the OpenAPI backend with authentication and rate limiting
-# Deploy with: gcloud api-gateway api-configs create <config-name> --api=<api-id> --openapi-spec=api-gateway-config.yaml
+# API Gateway Configuration for Constructio Generators API (OpenAPI 2.0)
 
-openapi: 3.0.3
+swagger: "2.0"
 info:
   title: Constructio Generators API (API Gateway)
-  version: 1.0.0
+  version: "1.0.0"
   description: |
     Production API Gateway configuration for Constructio Generators API.
-    Provides authentication, rate limiting, and unified access for both REST clients and MCP servers.
-    
-    This gateway fronts a Cloud Run service and enforces:
-    - Firebase Auth for user-facing requests
-    - API Key auth for service-to-service calls  
-    - Service Account JWT for MCP server access
-    - Rate limiting per API key
-    - Request/response logging
+    Provides API key authentication for service-to-service calls.
 
-# Global backend configuration (can be overridden per path)
-x-google-backend:
-  address: https://constructio-mcp-server-XXXXXX.a.run.app  # Replace with your Cloud Run URL
-  protocol: h2
-  deadline: 30.0  # Request timeout in seconds
+basePath: /
 
-# API Gateway management settings
-x-google-management:
-  metrics:
-    - name: "requests-total"
-      displayName: "Total API Requests"
-      description: "Total number of API requests"
-      valueType: INT64
-      metricKind: DELTA
-  quota:
-    limits:
-      - name: "requests-per-minute-per-key"
-        displayName: "Requests per minute per API key"
-        description: "Rate limit per API key"
-        defaultLimit: 1000
-        maxLimit: 10000
-        duration: "1m"
+schemes:
+  - https
+consumes:
+  - application/json
+produces:
+  - application/json
 
-# Define security schemes
-components:
-  securitySchemes:
-    # Option 1: Firebase Authentication (recommended for user-facing apps)
-    firebase_auth:
-      type: oauth2
-      flows:
-        implicit:
-          authorizationUrl: https://accounts.google.com/o/oauth2/v2/auth
-          scopes:
-            openid: OpenID Connect
-            email: User email
-      x-google-issuer: https://securetoken.google.com/YOUR_PROJECT_ID  # Replace with your project ID
-      x-google-jwks_uri: https://www.googleapis.com/service_accounts/v1/metadata/x509/securetoken@system.gserviceaccount.com
-      x-google-audiences: YOUR_PROJECT_ID  # Replace with your project ID
+securityDefinitions:
+  api_key:
+    type: apiKey
+    name: x-api-key
+    in: header
 
-    # Option 2: API Key (for service-to-service, simpler setup)
-    api_key:
-      type: apiKey
-      name: x-api-key
-      in: header
-      x-google-issuer: api-key-issuer
-      x-google-audiences: api-key-audience
-
-    # Option 3: Service Account JWT (for MCP server → API Gateway)
-    service_account:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-      x-google-issuer: constructio-mcp-client@YOUR_PROJECT_ID.iam.gserviceaccount.com
-      x-google-jwks_uri: https://www.googleapis.com/robot/v1/metadata/x509/constructio-mcp-client@YOUR_PROJECT_ID.iam.gserviceaccount.com
-      x-google-audiences: https://constructio-api-XXXXXX.apigateway.YOUR_PROJECT_ID.cloud.goog
-
-# Default security: Accept any of the three auth methods
 security:
-  - firebase_auth: []
   - api_key: []
-  - service_account: []
 
 paths:
-  # ========================================
-  # Generator Listing & Search
-  # ========================================
   /v1/generators:
     get:
       summary: List/search generators
-      description: |
-        Search generator metadata by stack, framework, language, or tags.
-        Maps to MCP tool: search_registry
       operationId: listGenerators
-      tags: [Generators]
       x-google-backend:
-        address: https://constructio-mcp-server-XXXXXX.a.run.app/v1/generators
+        address: https://constructio-mcp-server-730645895766.europe-west1.run.app/v1/generators
+        jwt_audience: https://constructio-mcp-server-730645895766.europe-west1.run.app
       parameters:
         - name: language
           in: query
-          description: Filter by programming language
-          schema:
-            type: string
-            example: "python"
+          type: string
         - name: version
           in: query
-          description: Filter by generator version
-          schema:
-            type: string
-            example: "1.0.0"
+          type: string
         - name: stack
           in: query
-          description: Filter by stack/framework
-          schema:
-            type: string
-            example: "fastapi"
-        - name: framework
-          in: query
-          description: Alias for stack (for MCP compatibility)
-          schema:
-            type: string
+          type: string
         - name: tag
           in: query
-          description: Filter by tag (repeatable)
-          style: form
-          explode: true
-          schema:
-            type: array
-            items:
-              type: string
-        - name: constraints
-          in: query
-          description: Filter by constraints (for MCP compatibility)
-          style: form
-          explode: true
-          schema:
-            type: array
-            items:
-              type: string
+          type: string
       responses:
-        '200':
+        "200":
           description: List of generators
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  generators:
-                    type: array
-                    items:
-                      type: object
-        '401':
-          description: Unauthorized
-        '500':
-          description: Server error
 
-    # ========================================
-    # Create Generator (with upload URL)
-    # ========================================
     post:
       summary: Create generator and get upload URL
-      description: |
-        Creates generator metadata and returns a signed GCS upload URL.
-        Maps to MCP tool: register_generator
       operationId: createGenerator
-      tags: [Generators]
       x-google-backend:
-        address: https://constructio-mcp-server-XXXXXX.a.run.app/v1/generators
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [metadata]
-              properties:
-                metadata:
-                  type: object
-                  description: Generator metadata
-                  properties:
-                    name:
-                      type: string
-                    language:
-                      type: string
-                    stack:
-                      type: string
-                doc_id:
-                  type: string
-                  description: Optional custom document ID
+        address: https://constructio-mcp-server-730645895766.europe-west1.run.app/v1/generators
+        jwt_audience: https://constructio-mcp-server-730645895766.europe-west1.run.app
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            type: object
       responses:
-        '201':
-          description: Generator created with upload URL
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-                  upload_url:
-                    type: string
-                  metadata:
-                    type: object
-        '400':
-          description: Bad request
-        '401':
-          description: Unauthorized
-        '409':
-          description: Generator already exists
-        '500':
-          description: Server error
+        "201":
+          description: Generator created
 
-  # ========================================
-  # Get Upload URL (standalone)
-  # ========================================
   /v1/generators/upload-url:
     post:
       summary: Get signed upload URL
-      description: |
-        Get a signed GCS upload URL without creating generator metadata.
-        Useful for re-uploading or updating artifacts.
-        Maps to MCP tool: get_upload_url
       operationId: getUploadUrl
-      tags: [Generators]
       x-google-backend:
-        address: https://constructio-mcp-server-XXXXXX.a.run.app/v1/generators/upload-url
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [blob_name]
-              properties:
-                blob_name:
-                  type: string
-                  description: Name/path for the blob in GCS
-                  example: "generators/my-generator-v1.0.0.tar.gz"
-                content_type:
-                  type: string
-                  description: MIME type of the file
-                  default: "application/gzip"
-                  example: "application/gzip"
+        address: https://constructio-mcp-server-730645895766.europe-west1.run.app/v1/generators/upload-url
+        jwt_audience: https://constructio-mcp-server-730645895766.europe-west1.run.app
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            type: object
       responses:
-        '200':
+        "200":
           description: Signed upload URL
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  upload_url:
-                    type: string
-                    description: Signed GCS upload URL
-                  blob_name:
-                    type: string
-                  expires_at:
-                    type: string
-                    format: date-time
-        '400':
-          description: Bad request
-        '401':
-          description: Unauthorized
-        '500':
-          description: Server error
 
-  # ========================================
-  # Get Single Generator
-  # ========================================
   /v1/generators/{generatorId}:
     get:
       summary: Get generator by ID
-      description: Retrieve a specific generator's metadata
       operationId: getGenerator
-      tags: [Generators]
       x-google-backend:
-        address: https://constructio-mcp-server-XXXXXX.a.run.app/v1/generators/{generatorId}
+        address: https://constructio-mcp-server-730645895766.europe-west1.run.app/v1/generators/{generatorId}
+        jwt_audience: https://constructio-mcp-server-730645895766.europe-west1.run.app
       parameters:
         - name: generatorId
           in: path
           required: true
-          description: Unique generator ID
-          schema:
-            type: string
+          type: string
       responses:
-        '200':
+        "200":
           description: Generator found
-          content:
-            application/json:
-              schema:
-                type: object
-        '401':
-          description: Unauthorized
-        '404':
-          description: Generator not found
-        '500':
-          description: Server error
-    # ========================================
-    # Delete Generator
-    # ========================================
+
     delete:
       summary: Delete generator
-      description: Delete generator metadata and artifact
       operationId: deleteGenerator
-      tags: [Generators]
       x-google-backend:
-        address: https://constructio-mcp-server-XXXXXX.a.run.app/v1/generators/{generatorId}
+        address: https://constructio-mcp-server-730645895766.europe-west1.run.app/v1/generators/{generatorId}
+        jwt_audience: https://constructio-mcp-server-730645895766.europe-west1.run.app
       parameters:
         - name: generatorId
           in: path
           required: true
-          schema:
-            type: string
+          type: string
       responses:
-        '204':
+        "204":
           description: Generator deleted
-        '401':
-          description: Unauthorized
-        '404':
-          description: Generator not found
-        '500':
-          description: Server error
 
-  # ========================================
-  # Health Check (no auth required)
-  # ========================================
-  /health:
-    get:
-      summary: Health check
-      description: Service health check endpoint (no authentication)
-      operationId: healthCheck
-      tags: [System]
-      security: []  # Override global security - no auth required
+  /v1/mcp:
+    post:
+      summary: MCP JSON-RPC endpoint
+      operationId: mcpTools
       x-google-backend:
-        address: https://constructio-mcp-server-XXXXXX.a.run.app/health
+        address: https://constructio-mcp-server-730645895766.europe-west1.run.app/mcp/
+        path_translation: CONSTANT_ADDRESS
+        jwt_audience: https://constructio-mcp-server-730645895766.europe-west1.run.app
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            type: object
       responses:
-        '200':
-          description: Service is healthy
-        '503':
-          description: Service unavailable
+        "200":
+          description: MCP response

@@ -20,55 +20,56 @@ steps:
       - 'PYTHONPATH=/workspace/src'
 
   # Step 2: Build the container image
-  - name: 'gcr.io/cloud-builders/docker'
+  - name: 'us-docker.pkg.dev/cloud-builders/docker'
     args: 
       - 'build'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$COMMIT_SHA'
+      - 'europe-west1-docker.pkg.dev/$PROJECT_ID/constructio/${_SERVICE_NAME}:$COMMIT_SHA'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$SHORT_SHA'
+      - 'europe-west1-docker.pkg.dev/$PROJECT_ID/constructio/${_SERVICE_NAME}:$SHORT_SHA'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}:latest'
+      - 'europe-west1-docker.pkg.dev/$PROJECT_ID/constructio/${_SERVICE_NAME}:latest'
       - '--cache-from'
-      - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}:latest'
+      - 'europe-west1-docker.pkg.dev/$PROJECT_ID/constructio/${_SERVICE_NAME}:latest'
       - '.'
     id: 'build-image'
     waitFor: ['run-tests']
 
   # Step 3: Push the container image
-  - name: 'gcr.io/cloud-builders/docker'
+  - name: 'us-docker.pkg.dev/cloud-builders/docker'
     args:
       - 'push'
-      - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$COMMIT_SHA'
+      - 'europe-west1-docker.pkg.dev/$PROJECT_ID/constructio/${_SERVICE_NAME}:$COMMIT_SHA'
     id: 'push-image'
     waitFor: ['build-image']
 
   # Step 4: Push latest tag
-  - name: 'gcr.io/cloud-builders/docker'
+  - name: 'us-docker.pkg.dev/cloud-builders/docker'
     args:
       - 'push'
-      - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}:latest'
+      - 'europe-west1-docker.pkg.dev/$PROJECT_ID/constructio/${_SERVICE_NAME}:latest'
     id: 'push-latest'
     waitFor: ['build-image']
 
   # Step 5: Deploy to Cloud Run
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  - name: 'us-docker.pkg.dev/google.com/cloudsdktool/cloud-sdk'
     entrypoint: bash
     args:
       - '-c'
       - |
         echo "🚀 Deploying to Cloud Run..."
         gcloud run deploy ${_SERVICE_NAME} \
-          --image gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$COMMIT_SHA \
+          --image europe-west1-docker.pkg.dev/$PROJECT_ID/constructio/${_SERVICE_NAME}:$COMMIT_SHA \
           --region ${_REGION} \
           --platform managed \
-          --allow-unauthenticated \
-          --set-env-vars "GCS_BUCKET=${_GCS_BUCKET},FIRESTORE_COLLECTION=${_FIRESTORE_COLLECTION},GCP_PROJECT_ID=$PROJECT_ID" \
+          --no-allow-unauthenticated \
+          --set-env-vars "GCS_BUCKET=${_GCS_BUCKET},GCS_PROJECT_ID=$PROJECT_ID,FIRESTORE_PROJECT_ID=$PROJECT_ID,FIRESTORE_DATABASE_ID=${_FIRESTORE_DATABASE_ID},FIRESTORE_COLLECTION=${_FIRESTORE_COLLECTION},GCS_UPLOAD_URL_EXPIRY_SECONDS=${_GCS_EXPIRY},USE_IN_MEMORY_ADAPTERS=false" \
           --memory ${_MEMORY} \
           --cpu ${_CPU} \
           --timeout ${_TIMEOUT} \
           --max-instances ${_MAX_INSTANCES} \
           --min-instances ${_MIN_INSTANCES} \
+          --service-account constructio-runtime@$PROJECT_ID.iam.gserviceaccount.com \
           --tag ${_ENVIRONMENT} \
           --quiet
         
@@ -77,7 +78,7 @@ steps:
     waitFor: ['push-image']
 
   # Step 6: Get Cloud Run service URL
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  - name: 'us-docker.pkg.dev/google.com/cloudsdktool/cloud-sdk'
     entrypoint: bash
     args:
       - '-c'
@@ -91,7 +92,7 @@ steps:
     waitFor: ['deploy-cloudrun']
 
   # Step 7: Health check
-  - name: 'gcr.io/cloud-builders/curl'
+  - name: 'us-docker.pkg.dev/cloud-builders/curl'
     entrypoint: bash
     args:
       - '-c'
@@ -115,7 +116,7 @@ steps:
     waitFor: ['deploy-cloudrun']
 
   # Step 8: Check if API Gateway config changed
-  - name: 'gcr.io/cloud-builders/git'
+  - name: 'us-docker.pkg.dev/cloud-builders/git'
     entrypoint: bash
     args:
       - '-c'
@@ -132,7 +133,7 @@ steps:
     waitFor: ['health-check']
 
   # Step 9: Update API Gateway config (only if changed)
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  - name: 'us-docker.pkg.dev/google.com/cloudsdktool/cloud-sdk'
     entrypoint: bash
     args:
       - '-c'
@@ -184,17 +185,17 @@ steps:
     id: 'update-api-gateway'
     waitFor: ['check-gateway-changes']
 
-# Images to push to Container Registry
+# Images to push to Artifact Registry
 images:
-  - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$COMMIT_SHA'
-  - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}:latest'
+  - 'europe-west1-docker.pkg.dev/$PROJECT_ID/constructio/${_SERVICE_NAME}:$COMMIT_SHA'
+  - 'europe-west1-docker.pkg.dev/$PROJECT_ID/constructio/${_SERVICE_NAME}:latest'
 
 # Substitution variables
 # Set these in Cloud Build trigger or override via: --substitutions KEY=VALUE
 substitutions:
   # Service configuration
   _SERVICE_NAME: 'constructio-mcp-server'
-  _REGION: 'us-central1'
+  _REGION: 'europe-west1'
   _ENVIRONMENT: 'production'
   
   # Cloud Run resources
@@ -205,8 +206,10 @@ substitutions:
   _MIN_INSTANCES: '0'
   
   # Application configuration
-  _GCS_BUCKET: 'your-bucket-name'  # REQUIRED: Set in trigger
+  _GCS_BUCKET: 'constructio-mcp-uploads'
   _FIRESTORE_COLLECTION: 'generators'
+  _FIRESTORE_DATABASE_ID: 'constructio-metadata'
+  _GCS_EXPIRY: '600'
   
   # API Gateway configuration
   _UPDATE_GATEWAY: 'true'  # Set to 'false' to skip gateway updates

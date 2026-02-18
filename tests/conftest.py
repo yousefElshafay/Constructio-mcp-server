@@ -16,7 +16,7 @@ def _clear_api_modules() -> None:
         "app",
         "config",
         "dependencies",
-        "mcp_tools",
+        "mcp",
         "repositories",
         "services",
         "interfaces",

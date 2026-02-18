@@ -15,7 +15,6 @@ RUN uv pip install --system --no-cache -r pyproject.toml
 
 # Copy application code
 COPY src/ ./src/
-COPY api/ ./api/
 
 # Set Python path
 ENV PYTHONPATH=/app/src
@@ -24,4 +23,4 @@ ENV PYTHONPATH=/app/src
 ENV PORT=8080
 
 # Run with uvicorn
-CMD uvicorn mcp_server.main:app --host 0.0.0.0 --port ${PORT}
+CMD uvicorn api.app:app --host 0.0.0.0 --port ${PORT}

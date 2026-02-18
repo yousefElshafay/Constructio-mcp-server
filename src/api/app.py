@@ -8,7 +8,8 @@ from connexion import AsyncApp
 from connexion.exceptions import ProblemException
 from pydantic import ValidationError
 
-from mcp_tools.main import mcp
+from mcp.app import mcp_http_app
+from mcp.proxy import mcp_proxy
 from middleware import (
     app_exception_handler,
     generic_exception_handler,
@@ -17,13 +18,6 @@ from middleware import (
 )
 from shared.exceptions import AppError
 
-mcp_http_app = mcp.http_app(
-    path="/",
-    transport="http",
-    stateless_http=True,
-    json_response=True,
-)
-
 app = AsyncApp(
     __name__,
     specification_dir=Path(__file__).parent,
@@ -31,7 +25,7 @@ app = AsyncApp(
 )
 app.add_api("specification.yaml")
 
-app._middleware_app.router.mount("/mcp", mcp_http_app)
+app._middleware_app.router.add_route("/mcp", mcp_proxy, methods=["POST"])
 app._middleware_app.router.mount("/mcp/", mcp_http_app)
 
 app.add_error_handler(ValidationError, validation_error_handler)
