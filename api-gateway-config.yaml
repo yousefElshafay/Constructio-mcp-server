@@ -18,13 +18,16 @@ produces:
   - application/json
 
 securityDefinitions:
-  api_key:
-    type: apiKey
-    name: x-api-key
-    in: header
+  firebase_jwt:
+    type: oauth2
+    flow: implicit
+    authorizationUrl: ""
+    x-google-issuer: https://securetoken.google.com/gen-lang-client-0772504950
+    x-google-audiences: gen-lang-client-0772504950
+    x-google-jwks_uri: https://www.googleapis.com/service_accounts/v1/metadata/x509/securetoken@system.gserviceaccount.com
 
 security:
-  - api_key: []
+  - firebase_jwt: []
 
 paths:
   /v1/generators:
