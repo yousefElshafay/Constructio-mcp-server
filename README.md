@@ -12,40 +12,40 @@ CI/CD test trigger.
 ```mermaid
 flowchart LR
   %% Clients and auth
-  client[Clients / Agents] -->|JWT| apigw[API Gateway]
-  idp[Firebase Auth / Identity Platform] -->|ID Token| client
+  client["Clients / Agents"] -->|JWT| apigw["API Gateway"];
+  idp["Firebase Auth / Identity Platform"] -->|ID Token| client;
 
   %% CI/CD
   subgraph ci["CI/CD (GitHub)"]
-    gh[GitHub Repo]
-    gha[GitHub Actions (WIF)]
-    cb[Cloud Build]
+    gh["GitHub Repo"];
+    gha["GitHub Actions - WIF"];
+    cb["Cloud Build"];
   end
-  gh --> gha
-  gha --> cb
+  gh --> gha;
+  gha --> cb;
 
   %% Deploy to GCP
-  gha --> cr[Cloud Run Service]
-  cb --> cr
+  gha --> cr["Cloud Run Service"];
+  cb --> cr;
 
   %% Cloud Run app
   subgraph app["Cloud Run: Constructio API + MCP"]
-    rest[REST API<br/>/v1/...]
-    mcp[MCP HTTP<br/>/mcp]
-    svc[GeneratorService]
-    rest --> svc
-    mcp --> svc
+    rest["REST API<br/>/v1/..."];
+    mcp["MCP HTTP<br/>/mcp"];
+    svc["GeneratorService"];
+    rest --> svc;
+    mcp --> svc;
   end
 
-  apigw --> cr
-  cr --> rest
-  cr --> mcp
+  apigw --> cr;
+  cr --> rest;
+  cr --> mcp;
 
   %% Data stores
-  fs[Firestore<br/>metadata]
-  gcs[GCS<br/>artifacts]
-  svc --> fs
-  svc --> gcs
+  fs["Firestore<br/>metadata"];
+  gcs["GCS<br/>artifacts"];
+  svc --> fs;
+  svc --> gcs;
 ```
 
 ## Endpoints
