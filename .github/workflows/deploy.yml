@@ -9,13 +9,13 @@ permissions:
   id-token: write
 
 env:
-  PROJECT_ID: gen-lang-client-0772504950
-  REGION: europe-west1
-  SERVICE_NAME: constructio-mcp-server
-  IMAGE: europe-west1-docker.pkg.dev/gen-lang-client-0772504950/constructio/constructio-api
-  API_ID: constructio-api
-  GATEWAY_NAME: constructio-gateway
-  GATEWAY_LOCATION: europe-west1
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: ${{ secrets.GCP_REGION }}
+  SERVICE_NAME: ${{ secrets.SERVICE_NAME }}
+  IMAGE: ${{ secrets.IMAGE_REPO }}
+  API_ID: ${{ vars.API_ID }}
+  GATEWAY_NAME: ${{ vars.GATEWAY_NAME }}
+  GATEWAY_LOCATION: ${{ vars.GATEWAY_LOCATION }}
 
 jobs:
   test:
@@ -49,8 +49,8 @@ jobs:
       - name: Auth to GCP (WIF)
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: projects/730645895766/locations/global/workloadIdentityPools/github-pool/providers/github-provider
-          service_account: github-actions@gen-lang-client-0772504950.iam.gserviceaccount.com
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
@@ -74,8 +74,8 @@ jobs:
             --image $IMAGE:$GITHUB_SHA \
             --region $REGION \
             --project $PROJECT_ID \
-            --service-account constructio-runtime@gen-lang-client-0772504950.iam.gserviceaccount.com \
-            --set-env-vars "GCS_BUCKET=constructio-mcp-uploads,GCS_PROJECT_ID=gen-lang-client-0772504950,FIRESTORE_PROJECT_ID=gen-lang-client-0772504950,FIRESTORE_DATABASE_ID=constructio-metadata,FIRESTORE_COLLECTION=generators,GCS_UPLOAD_URL_EXPIRY_SECONDS=600,USE_IN_MEMORY_ADAPTERS=false,GCS_SIGNER_SERVICE_ACCOUNT=constructio-runtime@gen-lang-client-0772504950.iam.gserviceaccount.com" \
+            --service-account ${{ secrets.RUN_SERVICE_ACCOUNT }} \
+            --set-env-vars "${{ secrets.ENV_VARS }}" \
             --no-allow-unauthenticated
 
       - name: Detect gateway spec change
