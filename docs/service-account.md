@@ -5,7 +5,7 @@ Use this only if you want to run against real Firestore/GCS locally.
 ## Create a service account
 
 ```bash
-PROJECT_ID=your-project-id
+PROJECT_ID=<PROJECT_ID>
 SA_NAME=constructio-api
 
 gcloud iam service-accounts create ${SA_NAME} \

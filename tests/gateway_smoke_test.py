@@ -5,12 +5,11 @@ import httpx
 
 
 class TestApiGatewaySmoke:
-    base_url = os.getenv(
-        "GATEWAY_HOST",
-        "https://constructio-gateway-9bnjp9au.ew.gateway.dev",
-    )
+    base_url = os.getenv("GATEWAY_HOST")
 
     def _headers(self) -> dict[str, str]:
+        if not self.base_url:
+            raise RuntimeError("GATEWAY_HOST is required for gateway tests")
         bearer_token = os.getenv("API_BEARER_TOKEN")
         if not bearer_token:
             raise RuntimeError("API_BEARER_TOKEN is required for gateway tests")
