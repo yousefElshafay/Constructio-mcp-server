@@ -2,25 +2,27 @@
 
 Single Cloud Run service that exposes:
 - REST API via Connexion (`/v1/...`)
-- MCP tools via FastMCP (`/mcp`)
+- MCP tools via FastMCP (`/mcp`, routed as `/v1/mcp` through the gateway)
 
-API Gateway sits in front for auth/rate limiting. Firestore stores metadata and GCS stores artifacts.
+API Gateway sits in front for auth/rate limiting and enforces Firebase JWTs. Firestore stores
+metadata and GCS stores artifacts.
 
 CI/CD test trigger.
 
 ```mermaid
 flowchart LR
-  %% Clients
-  client[Clients / Agents] -->|JWT| apigw[API Gateway<br/>Firebase Auth JWT]
+  %% Clients and auth
+  client[Clients / Agents] -->|JWT| apigw[API Gateway]
+  idp[Firebase Auth / Identity Platform] -->|ID Token| client
 
   %% CI/CD
   subgraph ci["CI/CD (GitHub)"]
     gh[GitHub Repo]
-    gha[GitHub Actions]
+    gha[GitHub Actions (WIF)]
     cb[Cloud Build]
   end
   gh --> gha
-  gh --> cb
+  gha --> cb
 
   %% Deploy to GCP
   gha --> cr[Cloud Run Service]
@@ -55,7 +57,8 @@ REST:
 - `DELETE /v1/generators/{generatorId}`
 
 MCP:
-- `POST /mcp` (JSON-RPC)
+- `POST /mcp` (JSON-RPC) on Cloud Run
+- `POST /v1/mcp` (JSON-RPC) via API Gateway
 
 ## Local run
 
