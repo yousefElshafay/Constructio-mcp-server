@@ -20,7 +20,7 @@ src/api/
   app.py                  # ASGI app; mounts REST + MCP
   specification.yaml      # OpenAPI contract
   controllers/            # REST handlers
-  mcp_tools/              # MCP tool definitions
+  mcp/                    # MCP app + tool definitions
   services/               # Business logic
   repositories/           # Firestore/GCS adapters + in-memory adapters
   interfaces/             # Port interfaces
@@ -38,7 +38,8 @@ src/api/
 - `DELETE /v1/generators/{generatorId}`
 
 ### MCP
-- `POST /mcp` (JSON-RPC)
+- `POST /mcp` (JSON-RPC) via Cloud Run
+- `POST /v1/mcp` (JSON-RPC) via API Gateway
 
 ## Data flow
 

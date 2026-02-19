@@ -6,6 +6,8 @@ Single Cloud Run service that exposes:
 
 API Gateway sits in front for auth/rate limiting. Firestore stores metadata and GCS stores artifacts.
 
+CI/CD test trigger.
+
 ```mermaid
 flowchart LR
   %% Clients

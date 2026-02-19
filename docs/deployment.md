@@ -79,10 +79,10 @@ curl -H "Authorization: Bearer YOUR_TOKEN" https://your-gateway-url/v1/generator
 
 ## MCP endpoint
 
-MCP is served by the same app at `/mcp`:
+MCP is served by the same app at `/mcp`. The gateway routes `/v1/mcp` to it:
 
 ```bash
-curl -X POST https://your-gateway-url/mcp \
+curl -X POST https://your-gateway-url/v1/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
