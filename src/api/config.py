@@ -10,7 +10,7 @@ class AppConfig(BaseSettings):
     """Consolidated application configuration."""
 
     model_config = SettingsConfigDict(
-        env_file=Path(__file__).parent / ".env",
+        env_file=Path(__file__).resolve().parents[2] / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -44,7 +44,7 @@ class AppConfig(BaseSettings):
             path = Path(self.google_application_credentials)
             if not path.is_absolute():
                 path = (Path(__file__).parent / path).resolve()
-            
+
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(path)
 
         missing: list[str] = []
