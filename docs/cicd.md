@@ -2,11 +2,9 @@
 
 ## Overview
 
-This project has two CI/CD options:
-1. **GitHub Actions** - Best for GitHub-hosted repositories
-2. **Cloud Build** - Native GCP solution, works with any Git provider
+This project uses GitHub Actions with Workload Identity Federation (WIF).
 
-Both pipelines automatically:
+The pipeline automatically:
 - ✅ Run tests on every push
 - ✅ Build Docker image
 - ✅ Deploy to Cloud Run
@@ -15,7 +13,7 @@ Both pipelines automatically:
 
 ---
 
-## Option 1: GitHub Actions (Recommended for GitHub)
+## GitHub Actions (WIF)
 
 ### Step 1: Create Service Account
 
@@ -47,29 +45,17 @@ gcloud projects add-iam-policy-binding $PROJECT_ID `
   --member="serviceAccount:$SA_EMAIL" `
   --role="roles/apigateway.admin"
 
-# Create and download key
-gcloud iam service-accounts keys create github-actions-key.json `
-  --iam-account=$SA_EMAIL `
-  --project=$PROJECT_ID
+## Step 2: Workload Identity Federation (WIF)
+
+Create a Workload Identity Pool and Provider, then allow the GitHub repo to
+impersonate the service account. See the deployment runbook for exact commands.
 ```
 
-### Step 2: Add GitHub Secrets
+### Step 2: Add GitHub Secrets and Variables
 
-1. Go to your GitHub repo → **Settings** → **Secrets and variables** → **Actions**
-2. Click **New repository secret** and add:
-
-| Secret Name | Value | Description |
-|-------------|-------|-------------|
-| `GCP_PROJECT_ID` | `your-gcp-project-id` | Your GCP project ID |
-| `GCP_SA_KEY` | Contents of `github-actions-key.json` | Service account JSON key |
-| `GCS_BUCKET` | `your-bucket-name` | GCS bucket for artifacts |
-| `FIRESTORE_COLLECTION` | `generators` | Firestore collection name |
-
-**To get the SA key contents:**
-```powershell
-Get-Content github-actions-key.json | Out-String
-# Copy the entire output and paste into GCP_SA_KEY secret
-```
+Go to your GitHub repo → **Settings** → **Secrets and variables** → **Actions**.
+Add repository secrets for deploy settings and WIF identifiers, and variables
+for non-sensitive values. Do not use service account keys.
 
 ### Step 3: Push to Main Branch
 
@@ -93,104 +79,17 @@ Watch the workflow run through:
 
 ---
 
-## Option 2: Cloud Build (Native GCP)
-
-### Step 1: Enable Cloud Build API
-
-```powershell
-gcloud services enable cloudbuild.googleapis.com --project=YOUR_PROJECT_ID
-```
-
-### Step 2: Grant Cloud Build Permissions
-
-```powershell
-$PROJECT_ID = "your-gcp-project-id"
-$PROJECT_NUMBER = (gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
-$CB_SA = "${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
-
-# Grant permissions
-gcloud projects add-iam-policy-binding $PROJECT_ID `
-  --member="serviceAccount:$CB_SA" `
-  --role="roles/run.admin"
-
-gcloud projects add-iam-policy-binding $PROJECT_ID `
-  --member="serviceAccount:$CB_SA" `
-  --role="roles/iam.serviceAccountUser"
-
-gcloud projects add-iam-policy-binding $PROJECT_ID `
-  --member="serviceAccount:$CB_SA" `
-  --role="roles/apigateway.admin"
-```
-
-### Step 3: Connect GitHub Repository
-
-**Via gcloud CLI:**
-```powershell
-gcloud builds triggers create github `
-  --repo-name=Constructio-mcp-server `
-  --repo-owner=YOUR_GITHUB_USERNAME `
-  --branch-pattern="^main$" `
-  --build-config=cloudbuild.yaml `
-  --substitutions _GCS_BUCKET=your-bucket-name,_FIRESTORE_COLLECTION=generators
-```
-
-**Via Console:**
-1. Go to [Cloud Build → Triggers](https://console.cloud.google.com/cloud-build/triggers)
-2. Click **Create Trigger**
-3. Connect your GitHub repository
-4. Configure:
-   - **Name:** `deploy-main`
-   - **Event:** Push to branch
-   - **Branch:** `^main$`
-   - **Build configuration:** `cloudbuild.yaml`
-   - **Substitution variables:**
-     - `_GCS_BUCKET` = `your-bucket-name`
-     - `_FIRESTORE_COLLECTION` = `generators`
-
-### Step 4: Test the Trigger
-
-```bash
-git add .
-git commit -m "feat: test cloud build trigger"
-git push origin main
-```
-
-Monitor the build:
-```powershell
-# List recent builds
-gcloud builds list --limit=5
-
-# Stream logs for specific build
-gcloud builds log BUILD_ID --stream
-```
-
-Or view in [Cloud Build Console](https://console.cloud.google.com/cloud-build/builds)
-
----
-
 ## Configuration
 
 ### Customize Cloud Run Settings
 
-Edit `cloudbuild.yaml` substitutions:
-
-```yaml
-substitutions:
-  _SERVICE_NAME: 'constructio-mcp-server'  # Service name
-  _REGION: 'us-central1'                   # Deployment region
-  _MEMORY: '512Mi'                         # Memory allocation
-  _CPU: '1'                                # CPU allocation
-  _MAX_INSTANCES: '10'                     # Max instances
-  _MIN_INSTANCES: '0'                      # Min instances (0 = scale to zero)
-  _UPDATE_GATEWAY: 'true'                  # Set to 'false' to skip gateway updates
-```
+Adjust deploy settings via GitHub Actions secrets/variables rather than
+editing the workflow.
 
 ### Disable API Gateway Updates
 
-If you don't want to update API Gateway on every deploy:
-
-**GitHub Actions:** Comment out the `update-gateway` job
-**Cloud Build:** Set `_UPDATE_GATEWAY: 'false'` in substitutions
+If you don't want to update API Gateway on every deploy, remove the
+"Update API Gateway" step from the workflow.
 
 ---
 
@@ -246,11 +145,6 @@ gcloud run services update-traffic constructio-mcp-server `
 **Cloud Run:**
 ```powershell
 gcloud run services logs tail constructio-mcp-server --region=us-central1
-```
-
-**Cloud Build:**
-```powershell
-gcloud builds log BUILD_ID --stream
 ```
 
 ### Set Up Alerts
@@ -385,7 +279,7 @@ env:
 
 1. **Always run tests locally** before pushing
 2. **Use feature branches** and merge via PR
-3. **Review Cloud Build logs** after deployment
+3. **Review GitHub Actions logs** after deployment
 4. **Monitor Cloud Run metrics** in GCP Console
 5. **Set up alerting** for production failures
 6. **Keep secrets in Secret Manager** (not in code)
@@ -415,18 +309,10 @@ env:
 - **View runs:** GitHub → Actions tab
 - **Re-run failed:** Click "Re-run failed jobs"
 
-### Cloud Build
-- **Config file:** `cloudbuild.yaml`
-- **View builds:** [Cloud Build Console](https://console.cloud.google.com/cloud-build/builds)
-- **Trigger manually:** `gcloud builds submit --config=cloudbuild.yaml`
-
 ### Useful Commands
 ```powershell
 # View service status
 gcloud run services describe constructio-mcp-server --region=us-central1
-
-# View recent builds
-gcloud builds list --limit=10
 
 # Stream logs
 gcloud run services logs tail constructio-mcp-server --region=us-central1

@@ -34,8 +34,9 @@ Collection: generators
 ## Phase 2 — Build & Deploy Cloud Run
 - Create Artifact Registry repo (if not exists):
   - gcloud artifacts repositories create constructio --repository-format=docker --location=europe-west1 --project gen-lang-client-0772504950
-- Build & Push image (Cloud Build):
-  - gcloud builds submit --tag europe-west1-docker.pkg.dev/gen-lang-client-0772504950/constructio/constructio-api --project gen-lang-client-0772504950
+- Build & Push image (Docker buildx):
+  - docker build -t europe-west1-docker.pkg.dev/gen-lang-client-0772504950/constructio/constructio-api:latest .
+  - docker push europe-west1-docker.pkg.dev/gen-lang-client-0772504950/constructio/constructio-api:latest
 - Deploy Cloud Run:
   - gcloud run deploy constructio-mcp-server \
       --image europe-west1-docker.pkg.dev/gen-lang-client-0772504950/constructio/constructio-api \
@@ -100,7 +101,7 @@ Collection: generators
   - curl -H "Authorization: Bearer <ID_TOKEN>" https://<GATEWAY_HOST>/v1/generators
 
 ## Phase 5 — CI/CD
-- Choose GitHub Actions or Cloud Build (docs/cicd.md)
+- GitHub Actions with WIF (docs/cicd.md)
 - Create CI/CD SA and roles:
   - roles/run.admin
   - roles/iam.serviceAccountUser

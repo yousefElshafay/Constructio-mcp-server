@@ -19,19 +19,16 @@ flowchart LR
   subgraph ci["CI/CD (GitHub)"]
     gh["GitHub Repo"];
     gha["GitHub Actions - WIF"];
-    cb["Cloud Build"];
   end
   gh --> gha;
-  gha --> cb;
 
   %% Deploy to GCP
   gha --> cr["Cloud Run Service"];
-  cb --> cr;
 
   %% Cloud Run app
   subgraph app["Cloud Run: Constructio API + MCP"]
     rest["REST API<br/>/v1/..."];
-    mcp["MCP HTTP<br/>/mcp"];
+    mcp["MCP HTTP<br/>/v1/mcp"];
     svc["GeneratorService"];
     rest --> svc;
     mcp --> svc;

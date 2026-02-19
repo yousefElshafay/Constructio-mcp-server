@@ -27,11 +27,15 @@ For local GCP access, see `docs/service-account.md`.
 
 ## Deploy to Cloud Run
 
+CI/CD handles image build and deployment. For manual deploys, build and push
+with Docker and then deploy with gcloud:
+
 ```bash
-gcloud builds submit --tag gcr.io/YOUR_PROJECT_ID/constructio-api
+docker build -t europe-west1-docker.pkg.dev/YOUR_PROJECT_ID/constructio/constructio-api:latest .
+docker push europe-west1-docker.pkg.dev/YOUR_PROJECT_ID/constructio/constructio-api:latest
 
 gcloud run deploy constructio-api \
-  --image gcr.io/YOUR_PROJECT_ID/constructio-api \
+  --image europe-west1-docker.pkg.dev/YOUR_PROJECT_ID/constructio/constructio-api:latest \
   --region us-central1 \
   --platform managed \
   --allow-unauthenticated \
