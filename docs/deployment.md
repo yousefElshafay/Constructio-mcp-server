@@ -9,9 +9,9 @@
 ## Required environment variables
 
 ```
-GCS_BUCKET=your-bucket
-GCS_PROJECT_ID=your-project-id
-FIRESTORE_PROJECT_ID=your-project-id
+GCS_BUCKET=<GCS_BUCKET>
+GCS_PROJECT_ID=<PROJECT_ID>
+FIRESTORE_PROJECT_ID=<PROJECT_ID>
 FIRESTORE_DATABASE_ID=(default)
 FIRESTORE_COLLECTION=generators
 GCS_UPLOAD_URL_EXPIRY_SECONDS=600
@@ -31,12 +31,12 @@ CI/CD handles image build and deployment. For manual deploys, build and push
 with Docker and then deploy with gcloud:
 
 ```bash
-docker build -t europe-west1-docker.pkg.dev/YOUR_PROJECT_ID/constructio/constructio-api:latest .
-docker push europe-west1-docker.pkg.dev/YOUR_PROJECT_ID/constructio/constructio-api:latest
+docker build -t <AR_REPO>/constructio-api:latest .
+docker push <AR_REPO>/constructio-api:latest
 
-gcloud run deploy constructio-api \
-  --image europe-west1-docker.pkg.dev/YOUR_PROJECT_ID/constructio/constructio-api:latest \
-  --region us-central1 \
+gcloud run deploy <SERVICE_NAME> \
+  --image <AR_REPO>/constructio-api:latest \
+  --region <REGION> \
   --platform managed \
   --allow-unauthenticated \
   --set-env-vars "GCS_BUCKET=...,GCS_PROJECT_ID=...,FIRESTORE_PROJECT_ID=...,FIRESTORE_COLLECTION=generators"
@@ -47,8 +47,8 @@ gcloud run deploy constructio-api \
 Once API Gateway is in place, restrict Cloud Run to internal/gateway traffic:
 
 ```bash
-gcloud run services update constructio-api \
-  --region us-central1 \
+gcloud run services update <SERVICE_NAME> \
+  --region <REGION> \
   --ingress internal-and-cloud-load-balancing \
   --no-allow-unauthenticated
 ```
@@ -56,12 +56,12 @@ gcloud run services update constructio-api \
 Grant the API Gateway service account permission to invoke the service:
 
 ```bash
-PROJECT_ID=your-project-id
-SERVICE_NAME=constructio-api
+PROJECT_ID=<PROJECT_ID>
+SERVICE_NAME=<SERVICE_NAME>
 GATEWAY_SA=service-${PROJECT_NUMBER}@gcp-sa-apigateway.iam.gserviceaccount.com
 
 gcloud run services add-iam-policy-binding ${SERVICE_NAME} \
-  --region us-central1 \
+  --region <REGION> \
   --member="serviceAccount:${GATEWAY_SA}" \
   --role="roles/run.invoker"
 ```
@@ -78,7 +78,7 @@ your Firebase project.
 Local test (gateway):
 
 ```bash
-curl -H "Authorization: Bearer YOUR_TOKEN" https://your-gateway-url/v1/generators
+curl -H "Authorization: Bearer <ID_TOKEN>" https://<GATEWAY_HOST>/v1/generators
 ```
 
 ## MCP endpoint
@@ -86,7 +86,7 @@ curl -H "Authorization: Bearer YOUR_TOKEN" https://your-gateway-url/v1/generator
 MCP is served by the same app at `/mcp`. The gateway routes `/v1/mcp` to it:
 
 ```bash
-curl -X POST https://your-gateway-url/v1/mcp \
+curl -X POST https://<GATEWAY_HOST>/v1/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
@@ -97,7 +97,7 @@ curl -X POST https://your-gateway-url/v1/mcp \
 Use the API Gateway URL for health checks if you keep the service private.
 
 ```bash
-curl https://your-gateway-url/v1/generators
+curl https://<GATEWAY_HOST>/v1/generators
 ```
 
 ## Notes

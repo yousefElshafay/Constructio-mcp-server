@@ -7,8 +7,6 @@ Single Cloud Run service that exposes:
 API Gateway sits in front for auth/rate limiting and enforces Firebase JWTs. Firestore stores
 metadata and GCS stores artifacts.
 
-CI/CD test trigger.
-
 ```mermaid
 flowchart LR
   %% Clients and auth
@@ -104,5 +102,6 @@ Optional:
 - `docs/architecture.md`
 - `docs/deployment.md`
 - `docs/cicd.md`
+- `docs/gcp_setup.md`
 - `docs/service-account.md`
 - `src/api/specification.yaml`
